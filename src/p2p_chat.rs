@@ -15,6 +15,7 @@ use std::{error::Error, task::{Context, Poll}};
 use std::future::Future;
 use std::pin::Pin;
 use tokio::io::{self, AsyncBufRead, AsyncBufReadExt};
+use tokio::io::AsyncRead;
 use pin_project::pin_project;
 
 #[derive(NetworkBehaviour)]
@@ -56,14 +57,15 @@ impl NetworkBehaviourEventProcess<MdnsEvent> for MyBehaviour {
 struct SwarmFuture<T> where T: swarm::NetworkBehaviour {
     #[pin]
     swarm: Swarm<T>,
-    // #[pin]
-    stdin: io::Lines<String>,
+    #[pin]
+    // stdin: io::Lines<String>,
+    stdin: io::Stdin,
     topic: floodsub::Topic,
     listening: bool
 }
 
 impl<T> SwarmFuture<T> where T: swarm::NetworkBehaviour {
-    fn new(swarm: Swarm<T>, stdin: io::Lines<String>, topic: &str) -> Self {
+    fn new(swarm: Swarm<T>, stdin: io::Stdin, topic: &str) -> Self {
         let topic = floodsub::Topic::new(topic);
         Self {
             swarm,
@@ -72,16 +74,6 @@ impl<T> SwarmFuture<T> where T: swarm::NetworkBehaviour {
             listening: false
         }
     }
-
-    // pub async fn send_msg(&mut self) {
-    //     while let Some(msg) = self.stdin.await {
-    //         self.swarm.floodsub.publish(self.topic, msg.as_bytes());
-    //     }
-    // }
-
-    // pub async fn listening_for(&self) {
-    //     self.await;
-    // }
 }
 
 impl<T> Future for SwarmFuture<T> where T: swarm::NetworkBehaviour {
@@ -89,20 +81,19 @@ impl<T> Future for SwarmFuture<T> where T: swarm::NetworkBehaviour {
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let this = self.project();
         let mut listening = this.listening;
-        let mut swarm: Pin<&mut _> = this.swarm;
-        let mut stdin = this.stdin;
+        // let mut swarm: Pin<&mut _> = this.swarm;
+        let mut swarm = this.swarm;
+        let mut stdin: Pin<&mut _> = this.stdin;
         let topic = this.topic;
 
-        let fut = async {
-            self.stdin.next_line().await
-        };
-        
         loop {
-            match (*stdin).try_poll_next_unpin(cx).unwrap() {
-                Poll::Ready(Some(line)) => swarm.floodsub.publish(topic.clone(), line.as_bytes()),
-                Poll::Ready(None) => panic!("Stdin closed"),
-                Poll::Pending => break
+            let mut buf = vec![];
+            match stdin.poll_read(cx, &mut buf) {
+                Poll::Ready(Ok(_)) => swarm.get_mut().floodsub.publish(topic.clone(), &buf),
+                Poll::Ready(Err(_)) => panic!("closed command line input."),
+                Poll::Pending => break,
             }
+            
         }
 
         loop {
@@ -122,6 +113,41 @@ impl<T> Future for SwarmFuture<T> where T: swarm::NetworkBehaviour {
         }
         Poll::Pending
     }
+}
+
+pub async fn p2p_chat1() -> Result<(), Box<dyn Error>> {
+    env_logger::init();
+
+    let local_key = identity::Keypair::generate_ed25519();
+    let local_peer_id = PeerId::from(local_key.public());
+
+    let transport = libp2p::build_development_transport(local_key)?;
+
+    let floodsub_topic = floodsub::Topic::new("chat");
+
+    let mut swarm = {
+        let mdns = Mdns::new()?;
+        let mut behaviour = MyBehaviour {
+            floodsub: Floodsub::new(local_peer_id.clone()),
+            mdns, ignore_member: false,
+        };
+
+        behaviour.floodsub.subscribe(floodsub_topic.clone());
+        Swarm::new(transport, behaviour, local_peer_id)
+    };
+
+    if let Some(to_dial) = std::env::args().nth(1) {
+        let addr: Multiaddr = to_dial.parse()?;
+        // let addr = "/ip4/192.168.31.204/tcp/9944".parse()?;
+        println!("args: {:?}", std::env::args());
+        Swarm::dial_addr(&mut swarm, addr);
+        println!("Dialed {:?}", to_dial);
+    }
+
+    // let mut stdin = io::BufReader::new(io::stdin());
+    Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/9944".parse()?)?;
+
+    Ok(SwarmFuture::new(swarm, io::stdin(), "chat").await)
 }
 
 pub async fn p2p_chat() -> Result<(), Box<dyn Error>> {

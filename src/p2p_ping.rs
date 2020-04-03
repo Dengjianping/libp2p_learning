@@ -1,12 +1,11 @@
-use futures::{future, prelude::*};
+use futures::prelude::*;
 use libp2p::{identity, PeerId, ping::{Ping, PingConfig}, Swarm};
 use libp2p::swarm::NetworkBehaviour;
 use std::{
     error::Error,
     task::{Context, Poll},
     future::Future,
-    pin::Pin,
-    marker::Unpin
+    pin::Pin
 };
 use pin_project::pin_project;
 
@@ -28,9 +27,9 @@ impl<T> SwarmFuture<T> where T: NetworkBehaviour {
 
 impl<T> Future for SwarmFuture<T> where T: NetworkBehaviour {
     type Output = ();
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
-        let mut listening: &mut bool = this.listening;
+        let listening: &mut bool = this.listening;
         let mut pined_swarm: Pin<&mut _> = this.swarm;
         loop {
             match pined_swarm.poll_next_unpin(cx) {

@@ -1,6 +1,6 @@
 use futures::prelude::*;
-use libp2p::{identity, PeerId, ping::{Ping, PingConfig}, Swarm};
-use libp2p::swarm::NetworkBehaviour;
+use libp2p::{identity, PeerId, ping::{Ping, PingEvent, PingConfig}, Swarm};
+use libp2p::swarm::{NetworkBehaviourEventProcess, NetworkBehaviour};
 use std::{
     error::Error,
     task::{Context, Poll},
@@ -9,6 +9,21 @@ use std::{
 };
 use pin_project::pin_project;
 
+// #[derive(libp2p::NetworkBehaviour)]
+// pub struct PingBehavior {
+//     ping: Ping
+// }
+
+// impl NetworkBehaviourEventProcess<PingEvent> for PingBehavior {
+//     fn inject_event(&mut self, message: PingEvent) {
+//         let PingEvent {peer, result} = message;
+//         match result {
+//             Ok(_) => println!("got message from peer"),
+//             Err(_) => println!("lost connection from peer"),
+//         }
+//     }
+// }
+
 #[pin_project]
 struct SwarmFuture<T> where T: NetworkBehaviour {
     #[pin]
@@ -16,8 +31,8 @@ struct SwarmFuture<T> where T: NetworkBehaviour {
     listening: bool
 }
 
-impl<T> SwarmFuture<T> where T: NetworkBehaviour {
-    fn new(swarm: Swarm<T>) -> Self {
+impl SwarmFuture<Ping> {
+    fn new(swarm: Swarm<Ping>) -> Self {
         Self {
             swarm,
             listening: false
@@ -25,7 +40,7 @@ impl<T> SwarmFuture<T> where T: NetworkBehaviour {
     }
 }
 
-impl<T> Future for SwarmFuture<T> where T: NetworkBehaviour {
+impl Future for SwarmFuture<Ping> {
     type Output = ();
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
@@ -33,7 +48,9 @@ impl<T> Future for SwarmFuture<T> where T: NetworkBehaviour {
         let mut pined_swarm: Pin<&mut _> = this.swarm;
         loop {
             match pined_swarm.poll_next_unpin(cx) {
-                Poll::Ready(Some(event)) => println!("current event: {:?}", 1234u32),
+                Poll::Ready(Some(event)) => {
+                    println!("current event: {:?}", event)
+                }
                 Poll::Ready(None) => return Poll::Ready(()),
                 Poll::Pending => {
                     if !*listening {
@@ -58,7 +75,11 @@ pub async fn p2p_ping() -> Result<(), Box<dyn Error>> {
 
     let transport = libp2p::build_development_transport(id_keys)?;
 
-    let behavior = Ping::new(PingConfig::new().with_keep_alive(true));
+    let behavior = {
+        let ping = Ping::new(PingConfig::new().with_keep_alive(true));
+        // PingBehavior { ping }
+        ping
+    };
 
     let mut swarm = Swarm::new(transport, behavior, peer_id);
 
@@ -74,28 +95,4 @@ pub async fn p2p_ping() -> Result<(), Box<dyn Error>> {
         SwarmFuture::new(swarm).await
     )
 
-}
-
-#[cfg(test)]
-mod tests {
-    use libp2p::{
-        Multiaddr,
-        PeerId,
-        Swarm,
-        NetworkBehavior,
-        identity,
-        floodsub::{self, Floodsub, FloodsubEvent},
-        mdns::{Mdns, MdnsEvent},
-        swam::NetworkBehaviorEventProcess
-    };
-    
-    #[test]
-    fn hex_id() {
-        let id = "aca376f206b8fc25a6ed44dbdc66547c36c6c33e3a119ffbeaef943642f0e906";
-        let id = hex::decode(id);
-        dbg!(&id);
-        let id = id.unwrap();
-        dbg!(&id.len());
-        dbg!(&String::from_utf8(id));
-    }
 }

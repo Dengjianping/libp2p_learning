@@ -18,7 +18,7 @@ use tokio::io::{self, AsyncBufReadExt};
 use pin_project::pin_project;
 
 #[derive(NetworkBehaviour)]
-pub struct MyBehaviour {
+pub struct FloodsubBehaviour {
     floodsub: Floodsub,
     mdns: Mdns,
 
@@ -27,7 +27,7 @@ pub struct MyBehaviour {
     ignore_member: bool,
 }
 
-impl NetworkBehaviourEventProcess<FloodsubEvent> for MyBehaviour {
+impl NetworkBehaviourEventProcess<FloodsubEvent> for FloodsubBehaviour {
     fn inject_event(&mut self, message: FloodsubEvent) {
         if let FloodsubEvent::Message(message) = message {
             println!("Received: {:?} from {:?}", String::from_utf8_lossy(&message.data), message.source);
@@ -35,7 +35,7 @@ impl NetworkBehaviourEventProcess<FloodsubEvent> for MyBehaviour {
     }
 }
 
-impl NetworkBehaviourEventProcess<MdnsEvent> for MyBehaviour {
+impl NetworkBehaviourEventProcess<MdnsEvent> for FloodsubBehaviour {
     fn inject_event(&mut self, event: MdnsEvent) {
         match event {
             MdnsEvent::Discovered(list) => {
@@ -62,8 +62,8 @@ struct SwarmFuture<T> where T: swarm::NetworkBehaviour {
     listening: bool
 }
 
-impl SwarmFuture<MyBehaviour> {
-    fn new(swarm: Swarm<MyBehaviour>, stdin: io::Lines<io::BufReader<io::Stdin>>, topic: &str) -> Self {
+impl SwarmFuture<FloodsubBehaviour> {
+    fn new(swarm: Swarm<FloodsubBehaviour>, stdin: io::Lines<io::BufReader<io::Stdin>>, topic: &str) -> Self {
         let topic = floodsub::Topic::new(topic);
         Self {
             swarm,
@@ -74,31 +74,31 @@ impl SwarmFuture<MyBehaviour> {
     }
 }
 
-impl Future for SwarmFuture<MyBehaviour> {
+impl Future for SwarmFuture<FloodsubBehaviour> {
     type Output = ();
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let this = self.project();
-        let mut listening = this.listening;
+        let listening = this.listening;
         let mut swarm: Pin<&mut _> = this.swarm;
-        let mut stdins = this.stdin;
+        let mut stdin = this.stdin;
         let topic = this.topic;
 
         loop {
-            match stdins.poll_next_unpin(cx) {
+            match stdin.poll_next_unpin(cx) {
                 Poll::Ready(Some(Ok(buf))) => {
-                    println!("inputed: {}", buf);
-                    println!("topic: {:?}", topic);
                     swarm.floodsub.publish(topic.clone(), buf.as_bytes());
-                    println!("published: {}", 12);
                 }
                 Poll::Ready(None) | Poll::Ready(Some(Err(_))) => panic!("closed command line input."),
-                Poll::Pending => break,
+                Poll::Pending => {
+                    println!("break the loop.");
+                    break;
+                }
             }
         }
 
         loop {
             match swarm.poll_next_unpin(cx) {
-                Poll::Ready(Some(event)) => println!("{:?}", 1234u32),
+                Poll::Ready(Some(event)) => println!("current event: {:?}", event),
                 Poll::Ready(None) => return Poll::Ready(()),
                 Poll::Pending => {
                     if !*listening {
@@ -127,7 +127,7 @@ pub async fn p2p_chat() -> Result<(), Box<dyn Error>> {
 
     let mut swarm = {
         let mdns = Mdns::new()?;
-        let mut behaviour = MyBehaviour {
+        let mut behaviour = FloodsubBehaviour {
             floodsub: Floodsub::new(local_peer_id.clone()),
             mdns, ignore_member: false,
         };

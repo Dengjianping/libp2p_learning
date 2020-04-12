@@ -1,4 +1,3 @@
-use futures::prelude::*;
 use futures::stream::StreamExt;
 use libp2p::{
     Multiaddr,
@@ -11,11 +10,14 @@ use libp2p::{
     mdns::{Mdns, MdnsEvent},
     swarm::NetworkBehaviourEventProcess
 };
-use std::{error::Error, task::{Context, Poll}};
-use std::future::Future;
-use std::pin::Pin;
-use tokio::io::{self, AsyncBufReadExt};
 use pin_project::pin_project;
+use std::{
+    error::Error,
+    future::Future,
+    pin::Pin,
+    task::{Context, Poll},
+};
+use tokio::io::{self, AsyncBufReadExt};
 
 #[derive(NetworkBehaviour)]
 pub struct FloodsubBehaviour {
@@ -63,8 +65,7 @@ struct SwarmFuture<T> where T: swarm::NetworkBehaviour {
 }
 
 impl SwarmFuture<FloodsubBehaviour> {
-    fn new(swarm: Swarm<FloodsubBehaviour>, stdin: io::Lines<io::BufReader<io::Stdin>>, topic: &str) -> Self {
-        let topic = floodsub::Topic::new(topic);
+    fn new(swarm: Swarm<FloodsubBehaviour>, stdin: io::Lines<io::BufReader<io::Stdin>>, topic: floodsub::Topic) -> Self {
         Self {
             swarm,
             stdin,
@@ -146,5 +147,5 @@ pub async fn p2p_chat() -> Result<(), Box<dyn Error>> {
     let stdin = io::BufReader::new(io::stdin()).lines();
     Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/9944".parse()?)?;
 
-    Ok(SwarmFuture::new(swarm, stdin, "chat").await)
+    Ok(SwarmFuture::new(swarm, stdin, floodsub_topic).await)
 }

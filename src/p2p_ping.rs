@@ -1,28 +1,15 @@
-use futures::prelude::*;
-use libp2p::{identity, PeerId, ping::{Ping, PingEvent, PingConfig}, Swarm};
-use libp2p::swarm::{NetworkBehaviourEventProcess, NetworkBehaviour};
+use futures::stream::StreamExt;
+use libp2p::{
+    identity, PeerId, ping::{Ping, PingConfig}, 
+    Swarm, swarm::NetworkBehaviour
+};
+use pin_project::pin_project;
 use std::{
     error::Error,
     task::{Context, Poll},
     future::Future,
     pin::Pin
 };
-use pin_project::pin_project;
-
-// #[derive(libp2p::NetworkBehaviour)]
-// pub struct PingBehavior {
-//     ping: Ping
-// }
-
-// impl NetworkBehaviourEventProcess<PingEvent> for PingBehavior {
-//     fn inject_event(&mut self, message: PingEvent) {
-//         let PingEvent {peer, result} = message;
-//         match result {
-//             Ok(_) => println!("got message from peer"),
-//             Err(_) => println!("lost connection from peer"),
-//         }
-//     }
-// }
 
 #[pin_project]
 struct SwarmFuture<T> where T: NetworkBehaviour {
@@ -77,7 +64,6 @@ pub async fn p2p_ping() -> Result<(), Box<dyn Error>> {
 
     let behavior = {
         let ping = Ping::new(PingConfig::new().with_keep_alive(true));
-        // PingBehavior { ping }
         ping
     };
 

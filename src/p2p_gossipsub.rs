@@ -133,16 +133,6 @@ pub async fn gossipsub_chat() -> Result<(), Box<dyn Error>> {
 
     libp2p::Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/9944".parse().unwrap()).unwrap();
 
-    // if let Some(to_dial) = std::env::args().nth(1) {
-    //     let dialing = to_dial.clone();
-    //     match to_dial.parse() {
-    //         Ok(to_dial) => match libp2p::Swarm::dial_addr(&mut swarm, to_dial) {
-    //             Ok(_) => println!("Dialed: {:?}", dialing),
-    //             Err(e) => println!("Dialed: {:?} failed: {:?}", dialing, e),
-    //         }
-    //         Err(e) => println!("Failed to parse address to dial: {:?}", e),
-    //     }
-    // }
     if let Some(addr) = std::env::args().nth(1) {
         let remote = addr.parse()?;
         Swarm::dial_addr(&mut swarm, remote)?;

@@ -10,25 +10,25 @@ use libp2p::{
     }
 };
 use std::{
-    env, error::Error, time::Duration
+    env, error::Error, time::Duration, str::FromStr,
 };
 
-pub fn ipfs_kad() {
+pub async fn ipfs_kad() -> Result<(), Box<dyn Error>> {
     env_logger::init();
 
     let local_key = identity::Keypair::generate_ed25519();
     let local_peer_id = PeerId::from(local_key.public());
 
-    let transport = build_development_transport();
+    let transport = build_development_transport(local_key).unwrap();
 
     let mut swarm = {
-        let cfg = KademliaConfig::default();
+        let mut cfg = KademliaConfig::default();
         cfg.set_query_timeout(Duration::from_secs(5 * 60));
         let store = MemoryStore::new(local_peer_id.clone());
         let mut behaviour = Kademlia::with_config(local_peer_id.clone(), store, cfg);
 
         behaviour.add_address(
-            &"QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ",
+            &PeerId::from_str("QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ").unwrap(),
             "/ip4/104.131.131.82/tcp/4001".parse()?
         );
 
@@ -69,5 +69,8 @@ pub fn ipfs_kad() {
 
             break;
         }
-    })
+    });
+
+    // let _ = fut.await;
+    Ok(())
 }

@@ -1,3 +1,4 @@
+use futures::stream::StreamExt;
 use libp2p::{
     Swarm,
     swarm,
@@ -11,6 +12,11 @@ use libp2p::{
 };
 use std::{
     env, error::Error, time::Duration, str::FromStr,
+};
+use std::{
+    future::Future,
+    pin::Pin,
+    task::{Context, Poll},
 };
 
 pub async fn ipfs_kad() -> Result<(), Box<dyn Error>> {
@@ -44,33 +50,41 @@ pub async fn ipfs_kad() -> Result<(), Box<dyn Error>> {
     println!("Search for the closest peers to {:?}", to_search);
     swarm.get_closest_peers(to_search);
 
-    let fut = futures::executor::block_on(async move {
+    let fut = futures::future::poll_fn(move |cx: &mut Context| {
         loop {
-            let event = swarm.next().await;
-
-            if let KademliaEvent::GetClosestPeersResult(result) = event {
-                match result {
-                    Ok(ok) => {
-                        if !ok.peers.is_empty() {
-                            println!("Query finished with closest peers: {:#?}", ok.peers)
-                        } else {
-                            println!("Query finished with no closest peers.")
-                        }
-                    }
-                    Err(GetClosestPeersError::Timeout { peers, .. }) => {
-                        if !peers.is_empty() {
-                            println!("Query timed out with closest peers: {:#?}", peers)
-                        } else {
-                            println!("Query time out with no closest peers.")
+            match swarm.poll_next_unpin(cx) {
+                Poll::Ready(Some(event)) => {
+                    if let KademliaEvent::GetClosestPeersResult(result) = event {
+                        match result {
+                            Ok(ok) => {
+                                if !ok.peers.is_empty() {
+                                    println!("Query finished with closest peers: {:#?}", ok.peers)
+                                } else {
+                                    println!("Query finished with no closest peers.")
+                                }
+                            }
+                            Err(GetClosestPeersError::Timeout { peers, .. }) => {
+                                if !peers.is_empty() {
+                                    println!("Query timed out with closest peers: {:#?}", peers)
+                                } else {
+                                    println!("Query time out with no closest peers.")
+                                }
+                            }
                         }
                     }
                 }
+                Poll::Ready(None) => {
+                    println!("no event triggered.");
+                    return Poll::Ready(());
+                }
+                Poll::Pending => {
+                    println!("received pending request.");
+                    return Poll::Pending;
+                }
             }
-
-            break;
         }
     });
 
-    // let _ = fut.await;
+    let _ = fut.await;
     Ok(())
 }

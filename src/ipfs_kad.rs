@@ -7,7 +7,7 @@ use libp2p::{
     build_development_transport,
     kad::{
         Kademlia, KademliaConfig, KademliaEvent, GetClosestPeersError,
-        record::store::MemoryStore,
+        record::store::MemoryStore, QueryResult,
     }
 };
 use std::{
@@ -54,22 +54,23 @@ pub async fn ipfs_kad() -> Result<(), Box<dyn Error>> {
         loop {
             match swarm.poll_next_unpin(cx) {
                 Poll::Ready(Some(event)) => {
-                    if let KademliaEvent::GetClosestPeersResult(result) = event {
+                    if let KademliaEvent::QueryResult{id, result, stats} = event {
                         match result {
-                            Ok(ok) => {
+                            QueryResult::GetClosestPeers(Ok(ok)) => {
                                 if !ok.peers.is_empty() {
                                     println!("Query finished with closest peers: {:#?}", ok.peers)
                                 } else {
                                     println!("Query finished with no closest peers.")
                                 }
                             }
-                            Err(GetClosestPeersError::Timeout { peers, .. }) => {
+                            QueryResult::GetClosestPeers(Err(GetClosestPeersError::Timeout { peers, .. })) => {
                                 if !peers.is_empty() {
                                     println!("Query timed out with closest peers: {:#?}", peers)
                                 } else {
                                     println!("Query time out with no closest peers.")
                                 }
                             }
+                            _ => println!("others enum that won't be handled."),
                         }
                     }
                 }
